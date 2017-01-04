@@ -1,0 +1,558 @@
+% !TEX encoding = UTF-8 Unicode
+\documentclass[12pt,a4paper,spanish]{article}
+
+\def\cvs$#1: #2 #3 #4 #5 #6 #7 #8${\def\revision{Revision: #3}}
+\cvs $Id: pcl.tex,v 1.5 2006-10-03 18:41:57 jbianco Exp $
+
+\usepackage[spanish]{babel}
+\usepackage{fontenc}
+\usepackage{makeidx}
+\usepackage{graphics}
+\usepackage{url}
+\usepackage[light]{draftcopy}
+
+\setlength{\oddsidemargin}{0pt}
+\setlength{\evensidemargin}{0pt}
+\setlength{\textwidth}{17cm}
+\setlength{\textheight}{23cm}
+\setlength\topmargin{-0.6in}
+\addtolength{\textheight}{0.6in}
+
+%%%%% Estilos
+\newenvironment{funcdesc}[1]
+	{	
+		%\begin{table}[ht]
+		\begin{table}[!htp]
+		\caption{ {#1} }
+		\begin{small}
+		\begin{tabular}{ | l | p{10cm} | } \hline
+	}
+	{
+		\end{tabular}
+		\end{small}
+		\end{table}
+	}
+
+\newcommand{\funcion}[1] {\textbf {Función} &  \texttt{{#1}} \\ \hline}
+\newcommand{\unamacro}[1] {\textbf {Macro} &  \texttt{{#1}} \\ \hline}
+\newcommand{\cabecera}[1] {\textbf {Cabecera} &  \texttt{\#include $<${#1}$>$} \\ \hline}
+\newcommand{\sinopsis}[1] {\textbf {Sinopsis} &  {#1} \\ \hline}
+\newcommand{\descrip}[1] {\textbf {Descripción} &  {#1} \\ \hline}
+\newcommand{\return}[2]{ \textbf{Retorna} & En caso de éxito: {#1} \\ & En caso de error: {#2} \\ \hline }
+\newcommand{\returnNada}[0]{ \textbf{Retorna} & Nada \\ \hline }
+%%%%% Fin de Estilos
+
+\author{Edgardo~E.~Hames, Julio~A.~Bianco}
+\title{Programación de Controladores para Linux}
+\date{Revisión 2.0.1}
+%\date{\revision}
+\makeatother
+%\pagestyle{headings}
+
+\begin{document}
+\maketitle
+%\markright{\revision}
+
+\section{Introducción}
+
+Linux es un clon del sistema operativo Unix, escrito desde cero por Linus Torvalds con ayuda de un grupo lejano de \textit{hackers} en la Red. Linux tiene todas las características de un sistema operativo moderno incluyendo multitarea, memoria virtual, bibliotecas compartidas, carga en demanda, una correcta administración de la memoria y soporte de red para IPv4 e IPv6 entre otros protocolos. La mayor parte de Linux es independiente del hardware donde se ejecuta. Sin embargo, para cada dispositivo soportado por Linux, alguien ha escrito el correspondiente controlador que lo hace interactuar con el resto del sistema. Sin estos controladores, ningún sistema es capaz de funcionar. 
+
+Los controladores de dispositivos (\textit{device drivers}) desempeñan un papel muy importante en el núcleo de Linux: son las cajas negras que hacen que cierto hardware responda a una interfaz bien definida de software y ocultan completamente los detalles de cómo funciona el dispositivo. Las actividades desde el espacio de usuario se realizan por medio de un conjunto estandarizado de llamadas al sistema que son independientes del controlador: \textbf{el rol del controlador es asociar esas llamadas a las operaciones específicas del hardware}. Esta interfaz de programación es tal que los controladores pueden ser construidos en forma separada del resto del núcleo, y enlazados y activados en tiempo de ejecución cuando sean necesarios. Un controlador de Linux programado para ser cargado y activado sobre un núcleo activo se denomina ``módulo''.
+
+El propósito de este material es presentar una introducción sobre cómo desarrollar controladores para el núcleo de Linux enfatizando la construcción de módulos.
+
+\section{Utilidades}
+
+Cuando trabajamos con módulos para el núcleo de Linux, el conjunto de utilidades \textit{modutils} nos permiten manipularlos desde su compilación hasta que deseemos removerlos del sistema. Aquí se presenta una breve reseña de cada una, pero se recomienda al lector que consulte las páginas del manual de cada una de estas aplicaciones.
+
+\begin{itemize}
+
+\item {depmod}: Crea una dependencia intermodular al estilo de Makefile, basado en los símbolos que encuentra en los módulos mencionados en la línea de comandos o en los directorios especificados en el archivo de configuración. Este archivo es utilizado por \textit{modprobe} para cargar la pila correcta de
+módulos.
+
+  \begin{description}
+  \item {-a} Buscar los módulos en  todos los directorios especificados en el archivo
+    de configuración \textit{/etc/modules.conf}.
+  \item {-e} Muestra los símbolos no resueltos de cada módulo.
+  \item {-n} Escribe el archivo de dependencia en la salida estándar en vez de en el árbol de \textit{/lib/modules}.
+  \end{description} 
+
+\item {modinfo}: Muestra información sobre un módulo.
+  \begin{description}
+  \item {-a} Muestra el autor del módulo.
+  \item {-d} Muestra la descripción del módulo.
+  \item {-l} Muestra la licencia del módulo.
+  \item {-p} Muestra los parámetros del módulo.
+  \item {-n} Muestra el path completo del archivo que corresponde al módulo.
+  \end{description} 
+
+\item {lsmod}: Muestra la lista de módulos cargados. Esta información se obtiene de \textit{/proc/modules}.
+
+\item {insmod}: Instala un módulo en el núcleo en ejecución.
+  \begin{description}
+  \item {-f} Carga el módulo aunque pertenezca a una versión dis\-tin\-ta del núcleo.
+  \item {-p} Prueba si el módulo puede ser cargado.
+  \end{description} 
+
+\item {rmmod}: Desinstala un módulo del núcleo en ejecución. 
+
+\item {modprobe}: Instala o desinstala módulos del núcleo en ejecución. 
+  \begin{description}
+  \item {-r} Descarga un módulo y todos los que lo referencian.
+  \end{description} 
+
+\item {dmesg}: Permite examinar los mensajes del núcleo. Los dos usos más frecuentes son:
+  \begin{description}
+  \item {} \texttt{[usuario@localhost]\$ dmesg > boot.messages}
+  \item {} \texttt{[usuario@localhost]\$ dmesg | less}
+  \end{description} 
+
+\end{itemize} 
+
+
+\section{Compilación del kernel}
+
+Una de las ventajas de Linux es que el núcleo del sistema puede ser recompilado por el usuario para ajustarlo a sus necesidades. De esta manera, uno puede deshabilitar funcionalidades que no vayan a ser usadas y obtener así un núcleo más liviano y rápido.
+
+Brevemente, los pasos para recompilar el núcleo de Linux son:
+
+\begin{enumerate}
+\item Descomprimir el archivo con el código fuente.
+  \begin{description}
+  \item {} \texttt{[root@localhost]\# tar -xjf linux-2.6.20.tar.bz2}
+  \end{description}
+
+\item Cambiar al directorio donde se descomprimió el archivo.
+  \begin{description}
+  \item {} \texttt{[root@localhost]\# cd linux-2.6.20}
+  \end{description}
+
+\item Configurar el núcleo. Esto puede realizarse de alguna de estas maneras:
+  \begin{description}
+  \item {} \texttt{[root@localhost]\# make config}  (Modo interactivo)
+  \item {} \texttt{[root@localhost]\# make menuconfig} (Menú modo texto)
+  \item {} \texttt{[root@localhost]\# make xconfig} (Menú modo gráfico)
+  \end{description}
+
+\item Generar las dependencias de los archivos, compilar la imagen del núcleo, los módulos.
+  \begin{description}
+  \item {} \texttt{[root@localhost]\# make}
+  \end{description}
+
+\item Instalar los módulos. Esto los copiará a una carpeta en \textit{/lib/modules} que dependerá de la versión del núcleo que se ha compilado. Por ejemplo, \textit{/lib/modules/2.6.20}.
+  \begin{description}
+  \item {} \texttt{[root@localhost]\# make modules\_install}
+  \end{description}
+
+\item Copiar el núcleo a \textit{/boot}. 
+  \begin{description}
+  \item {} \texttt{[root@localhost]\# cp arch/i386/boot/bzImage /boot}
+  \end{description}
+
+\item Configurar el cargador de arranque. Dependiendo de cuál use, esto consistirá en agregar una nueva entrada para el núcleo que acaba de compilar.
+
+\item Reiniciar el equipo y rezar para que todo ande.
+
+\end{enumerate} 
+
+Se puede encontrar una explicación más detallada de cómo recompilar el núcleo de Linux, consultando \cite{KerHT}.
+
+\section{La construcción de módulos}
+
+Ya es hora de comenzar a programar! En esta sección se presentan conceptos sobre módulos y programación del núcleo de Linux 2.6. Mostraremos el código de un módulo completo (aunque poco útil) y veremos el código que comparten muchos módulos.
+
+\subsection{Preparación del sistema}
+
+La construcción de módulos para el núcleo de Linux 2.6 requiere que tenga el árbol de fuentes de un núcleo configurado y construido en su sistema. Este requerimiento es un cambio desde versiones anteriores del núcleo en las cuales alcanzaba con tener los encabezados que correspondieran a la versión en uso. Los módulos del núcleo 2.6 se enlazan con archivos objetos encontrados en árbol de fuentes del núcleo.
+
+En los sistemas GNU/Linux basados en Debian, esto significa instalar el paquete \verb+linux-headers-generic+ o \verb+linux-kernel-headers+.
+
+\subsection{Primer módulo}
+
+Un módulo para el núcleo de Linux agrega una funcionalidad al sistema, la cual puede corresponder al controlador de un componente de hardware o no. Es importante notar este punto ya que nuestro primer ejemplo es una clara muestra de que no es necesario que un módulo haga nada con el hardware:
+
+\begin{small}
+\begin{verbatim}
+#include <linux/init.h>
+#include <linux/module.h>
+
+MODULE_LICENSE("GPL")
+
+static int hello_init(void)
+{
+        printk(KERN_INFO "Hello, world\n");
+        return 0;
+}
+
+void hello_exit(void) {
+        printk(KERN_INFO "Goodbye, cruel world\n");
+}
+
+module_init(hello_init);
+module_exit(hello_exit);
+\end{verbatim}
+\end{small} 
+
+Este módulo define dos funciones, una para ser invocada cuando se carga y activa el módulo (\textit{hello\_init}) y otra para cuando el módulo es removido y desactivado (\textit{hello\_exit}). Las macros \textit{module\_init} y \textit{module\_exit} sirven para indicar el rol de estas dos funciones. La macro MODULE\_LICENSE es usada para indicar que este módulo tiene una licencia libre; sin esta declaración, el núcleo se queja cuando se carga el módulo.
+
+La función señalada por \textit{module\_init} debe contener todo el código de inicialización del módulo. Como ya veremos más adelante, en caso de que estemos implementando un controlador, aquí debemos realizar la registración del dispositivo.
+
+La función indicada por \textit{module\_exit} debe contener el código de terminación del módulo. La posibilidad de descargar un módulo con el sistema en ejecución es una de las características más apreciadas por los desarrolladores, ya que reduce el tiempo de desarrollo; uno puede probar distintas versiones del controlador sin necesidad de reiniciar el equipo cada vez que se realiza una nueva versión.
+
+La función \textit{printk} está definida en el núcleo de Linux y se comporta de manera similar a la función \textit{printf} de la biblioteca estándar de C. La constante \textit{KERN\_INFO} indica la prioridad del mensaje.
+
+?`Para qué necesitamos otra implementación de una función que ya está en la biblioteca de C? Dado que el núcleo se ejecuta por sí mismo y sin la ayuda de bibliotecas externas, entonces debe definir todas las funciones que le hagan falta. Por lo tanto, al no estar enlazado con ninguna biblioteca, el código fuente de los módulos \textit{nunca} debe incluir los archivos de cabecera comunes.
+
+Ahora podremos probar el módulo utilizando las utilidades \textit{insmod} y \textit{rmmod}. Notar que sólo el superusuario puede cargar y descargar módulos.
+
+\begin{small}
+\begin{verbatim}
+
+[usuario@localhost]$ make
+make -C /lib/modules/2.6.20-15-generic/build M=/path/to/src modules
+make[1]: Entering directory `/usr/src/linux-headers-2.6.20-15-generic'
+ CC [M]  /path/to/src/hello.o
+ Building modules, stage 2.
+ MODPOST 1 modules
+ CC      /path/to/src/hello.mod.o
+ LD [M]  /path/to/src/hello.ko
+make[1]: Leaving directory `/usr/src/linux-headers-2.6.20-15-generic'
+
+[root@localhost]# insmod ./hello.ko
+Hello, World
+[root@localhost]# rmmod hello
+Goodbye, cruel world
+
+\end{verbatim}
+\end{small}
+
+El lector atento descubrirá que hemos hecho uso de la herramienta \textit{make} para poder construir el módulo. En la próxima subsección encontrará los detalles sobre cómo escribir Makefiles para el núcleo y sus módulos. Para concluir, se presenta un resumen de las funciones usadas hasta el momento. 
+
+\begin{funcdesc}{función de incialización}
+\funcion {static int <nombre a elección>(void)}
+\sinopsis{Punto de entrada de módulos del núcleo.}
+\descrip{Esta función debe estar implementada en todo módulo y define el punto de entrada al realizarse su carga. En los controladores es la encargada de inicializar el dispositivo que maneja.}
+\return{0.}{Código de error apropiado.}
+\end{funcdesc}
+
+\begin{funcdesc}{función de finalización}
+\funcion{static void <nombre a elección>(void)}
+\sinopsis{Punto de salida de módulos del núcleo.}
+\descrip{Esta función debe estar implementada en todo módulo y define el punto de salida al realizarse su descarga. En los controladores es la encargada de realizar el proceso de terminación del dispositivo que maneja.}
+\returnNada
+\end{funcdesc}
+
+\begin{funcdesc}{module\_init}
+\unamacro{module\_init}
+\sinopsis{Señala el punto de entrada de módulos del núcleo.}
+\returnNada
+\end{funcdesc}
+
+\begin{funcdesc}{module\_exit}
+\unamacro{module\_exit}
+\sinopsis{Señala el punto de salida de módulos del núcleo.}
+\returnNada
+\end{funcdesc}
+
+\subsection{Makefiles para módulos}
+
+El proceso de construcción de un módulo difiere significativamente de la construcción de un programa tradicional. El núcleo es un programa autónomo con ciertos requerimientos sobre cómo juntar todas sus piezas. El nuevo sistema de construcción es más sencillo y simple que la versión 2.4. Mostramos a continuación un Makefile de ejemplo, apto para módulos con uno o más archivos objeto.
+
+\begin{small}
+\begin{verbatim}
+
+KERNELDIR ?= "/lib/modules/$(shell uname -r)/build"
+PWD := "$(shell pwd)"
+
+obj-m := hello.o
+hello-objs := hello.o  # Agregar otros archivos objeto
+
+default:
+	$(MAKE) -C "$(KERNELDIR)" "M=$(PWD)" modules
+
+\end{verbatim}
+\end{small}
+
+Este archivo Makefile es muy flexible y fácilmente reusable ya que no tiene dependencia sobre particularidades del sistema donde se invoca.
+
+\subsection{Parámetros de módulos}
+
+Así como los programas de espacio usuario pueden tomar parámetros para modificar su comportamiento, el núcleo de Linux permite que los módulos también sean ajustados mediante el paso de parámetros durante su carga (con \textit{insmod} o \textit{modprobe}):
+
+\begin{flushleft}
+\texttt{[root@localhost]\$ insmod mimodulo count=42}
+\end{flushleft} 
+
+En el ejemplo anterior, el parámetro \textit{count} del modulo \textit{mimodulo} tomará el valor 42. En el código, ese parámetro se declarará agregando estas líneas (además de \textit{$<$linux/stat.h$>$}):
+
+\begin{small}
+\begin{verbatim}
+
+static int count = 1; /* valor por defecto */
+module_param(count, int, S_IRUGO); /* permiso de lectura para todo el mundo */
+
+\end{verbatim}
+\end{small}
+
+\subsection{Creación de dispositivos}
+
+Los dispositivos que el núcleo controla pueden corresponderse con artefactos físicos o lógicos. Sin embargo, todos están mapeados a algún nodo o archivo especial normalmente en el directorio \textit{/dev}. Por ejemplo, \textit{/dev/hda} corresponde a la unidad de disco duro IDE master primaria del equipo y \textit{/dev/urandom} es un dispositivo virtual que nos permite obtener números aleatorios generados a partir del \textit{``ruido''} del equipo.
+
+Mediante el comando \textit{ls} podemos ver los atributos de estos dispositivos:
+\begin{flushleft}
+\texttt{[usuario@localhost]\$ ls -l /dev/hda /dev/urandom}
+
+\texttt{brw-------    1 root     root       3,   0 2007-09-26 08:45 /dev/hda}
+
+\texttt{crw-r--r--    1 root     root       1,   9 2007-09-26 08:45 /dev/urandom}
+\end{flushleft} 
+
+En la primera columna podemos observar los permisos de acceso de los archivos y notamos una primer diferencia entre ambos. En el caso de \textit{/dev/hda} hay una \textit{b} que nos indica que se trata de un dispositivo de bloques; la \textit{c} en \textit{/dev/urandom} nos dice que es un dispositivo de caracteres.
+
+En la quinta columna, encontramos lo que se ha dado en llamar el \textit{major number} de un dispositivo. Este número es el que le indica al núcleo cuál controlador es el encargado de manejar este dispositivo. Cada controlador en el sistema registra un \textit{major number} y el núcleo se encarga de llevar una tabla que los asocia. Así, el sistema sabe fácilmente qué operaciones se pueden realizar sobre un dispositivo.
+
+Finalmente, en la sexta columna se halla el \textit{minor number} del dispositivo. Este número indica la instancia del dispositivo que se está accediendo. Por ejemplo, dos particiones de un disco duro son manejadas por el mismo controlador, pero son distintas instancias del dispositivo:
+
+\begin{flushleft}
+\texttt{[usuario@localhost]\$ ls -l /dev/hda*}
+
+\texttt{brw-------    1 root     root       3,   1 2007-09-26 08:45 /dev/hda1}
+
+\texttt{brw-------    1 root     root       3,   2 2007-09-26 08:45 /dev/hda2}
+\end{flushleft} 
+
+Para crear las entradas en \textit{/dev} se utiliza el programa \textit{mknod}. Su uso se da de la siguiente ma\-ne\-ra:
+
+\begin{flushleft} 
+\texttt{[usuario@localhost]\$ mknod -m 0666 /dev/nombre c M m}
+\end{flushleft} 
+
+El modificador \textit{-m} indica el modo de acceso; la \textit{c}, que es dispositivo de caracteres. \textit{M} y \textit{m} son el \textit{major} y \textit{minor}  del dispositivo respectivamente.
+
+Se puede encontrar una lista completa de la lista de dispositivos y sus \textit{major} y \textit{minor numbers} consultando \textit{/usr/src/linux/Documentation/devices.txt}.
+
+\section{Interfaz de programación}
+
+El núcleo de Linux brinda una interfaz de programación que debe ser implementada por cada controlador del sistema. Así, los controladores se comportan como verdaderos tipos abstractos y pueden interactuar con el resto del sistema con gran flexibilidad y extensibilidad.
+
+El desarrollador deberá asociar el número \textit{major} del dispositivo en \textit{/dev} a una estructura \textit{file\_operations} con punteros a cada una de las funciones que soporta el controlador. Dicha asociación se debe realizar al inicializar el controlador. Cuando el controlador se descarga, es necesario deshacer esta asociación para que el núcleo no intente invocar funciones que ya no están disponibles.
+
+%\clearpage
+%Las siguientes funciones son las que nos permiten acceder al dispositivo y liberarlo.
+%\clearpage
+%Las siguientes funciones son las que permiten enviar y recibir datos desde el dispositivo.
+A continuación vemos las funciones que nos permiten acceder al dispositivo y liberarlos, asi como las que permiten enviar y recibir datos.
+
+\begin{funcdesc}{register\_chrdev}
+\funcion{int register\_chrdev(unsigned int major, const char *name, struct file\_operations *fops)}
+\cabecera{linux/fs.h}
+\sinopsis{Realiza el registro de un dispositivo de caracteres.}
+\descrip{Esta función debe ser llamada por todo controlador para realizar el registro de un dispositivo de caracteres. \textit{major} es el número mayor del dispositivo que se quiere controlar (entre 0 y 255). Si es 0, el número es asignado dinámicamente por el núcleo. \textit{name} es el nombre del dispositivo como aparecerá en \textit{/proc/devices}. \textit{fops} es la estructura que contiene referencias a las operaciones que se pueden realizar sobre el dispositivo. }
+\return{0 si \textit{major} es distinto de 0; número de \textit{major} en caso contrario.}{-EBUSY si \textit{major} ya ha sido solicitado por otro controlador   ó -EINVAL si no es número \textit{major} válido.}
+\end{funcdesc} 
+
+\begin{funcdesc}{unregister\_chrdev}
+\funcion{void unregister\_chrdev(unsigned int major, const char *name)}
+\cabecera{linux/fs.h}
+\sinopsis{Realiza el desregistro de un dispositivo de caracteres.}
+\descrip{Esta función debe ser llamada por todo controlador para realizar el desregistro de un dispositivo de caracteres. \textit{major} es el número mayor del dispositivo controlado (el mismo que se pasó o se obtuvo en \textit{register\_chrdev}). \textit{name} es el nombre del dispositivo como aparecía en \textit{/proc/devices}.}
+\returnNada
+\end{funcdesc} 
+
+
+\begin{funcdesc}{open}
+\funcion{int open(struct inode *ip, struct file *fp)}
+\cabecera{linux/fs.h}
+\sinopsis{Apertura de un dispositivo.}
+\descrip{Aún cuando es la primera operación que se realiza sobre un dispositivo, su implementación no es obligatoria por parte de un controlador. En caso de no estar definida, el controlador no es avisado sobre la apertura del dispositivo, pero ésta se realiza en forma satisfactoria.}
+\return{0.}{Código de error apropiado.}
+\end{funcdesc} 
+
+\begin{funcdesc}{release}
+\funcion{int release(struct inode *ip, struct file *fp)}
+\cabecera{linux/fs.h}
+\sinopsis{Liberación de un dispositivo.}
+\descrip{Esta operación se invoca una vez que se libera el dispositivo. Es decir, que no es llamada cada vez que un programa ejecuta la llamada al sistema \textit{close}. Cada vez que una estructura es compartida (por ejemplo, después de un \textit{fork} o \textit{dup}), \textit{release} no será invocado hasta que todas las copias estén cerradas. En caso de no estar definida, el controlador no es avisado sobre el cierre del dispositivo, pero ésta se realiza en forma satisfactoria.}
+\return{0.}{Código de error apropiado.}
+\end{funcdesc} 
+
+
+\begin{funcdesc}{read}
+\funcion{ssize\_t read(struct file *fp, char *buf, size\_t length, loff\_t *offset)}
+\cabecera{linux/fs.h}
+\sinopsis{Obtiene datos desde un dispositivo.}
+\descrip{Este método es llamado cada vez que se intenta leer datos desde un dispositivo. Los datos leídos deben ser copiados en \textit{buf}. Se debe prestar especial atención en esto, ya que es un puntero a una dirección de memoria en espacio usuario. \textit{length} es la cantidad de bytes que deben leerse y \textit{offset} el desplazamiento desde el inicio del archivo.  Si el método no se define, al ser invocado se retorna -EINVAL.}
+\return{La cantidad de bytes leídos ó 0 para indicar EOF.}{Código de error apropiado.}
+\end{funcdesc} 
+
+\begin{funcdesc}{write}
+\funcion{ssize\_t write(struct file *fp, const char *buf, size\_t length, loff\_t *offset)}
+\cabecera{linux/fs.h}
+\sinopsis{Escritura en un dispositivo.}
+\descrip{Esta operación envía datos al dispositivo. Los datos a escribir están la dirección apuntada por \textit{buf}.  Se debe prestar especial atención en esto, ya que es un puntero a una dirección de memoria en espacio usuario. \textit{length} es la cantidad de bytes que deben escribirse y \textit{offset} el desplazamiento desde el inicio del archivo. Si el método no se define, al ser invocado se retorna -EINVAL.}
+\return{La cantidad de bytes escritos ó 0 para indicar EOF.}{Código de error apropiado.}
+\end{funcdesc} 
+
+\section{Espacio de Usuario vs. Espacio de Núcleo} 
+
+Es muy importante resaltar que el argument \textit{buf} de los métodos \textit{read} y \textit{write} es un puntero de espacio usuario y no puede ser desreferenciado directamente por el núcleo.
+
+Las direcciones de memoria del núcleo están protegidas del alcance de los programas en espacio usuario. Por lo tanto, para leer y escribir datos desde estos programas es necesario usar un par de macros que hacen esta tarea posible.
+
+\begin{funcdesc}{copy\_from\_user}
+\funcion{unsigned long copy\_from\_user(void *to, const void *from, unsigned long count)}
+\cabecera{asm/uaccess.h}
+\sinopsis{Copia memoria de espacio usuario a espacio núcleo.}
+\descrip{Esta función se comporta como \textit{memcpy} y copia memoria de espacio usuario (\textit{from})  a espacio núcleo (\textit{to}) \textit{count} bytes. Si el puntero \textit{to} es una referencia inválida, no se realiza copia alguna. Si durante la copia se encuentra una referencia inválida, se devuelve la cantidad de bytes que falta leer. }
+\return{0}{La cantidad de bytes que restan por leer.}
+\end{funcdesc}
+
+\begin{funcdesc}{copy\_to\_user}
+\funcion{unsigned long copy\_to\_user(void *to, const void *from, unsigned long count)}
+\cabecera{asm/uaccess.h}
+\sinopsis{Copia memoria de espacio núcleo a espacio usuario.}
+\descrip{Esta función se comporta como \textit{memcpy} y copia memoria de espacio núcleo (\textit{from})  a espacio usuario (\textit{to})  \textit{count} bytes. Si el puntero \textit{to} es una referencia inválida, no se realiza copia alguna. Si durante la copia se encuentra una referencia inválida, se devuelve la cantidad de bytes que falta escribir. }
+\return{0}{La cantidad de bytes que restan por escribir.}
+\end{funcdesc}
+
+%\clearpage
+\section{Sincronización de procesos}
+
+Para solucionar los problemas que surgen con las condiciones de carrera, el núcleo nos provee de semáforos. Los semáforos de Linux tienen el tipo \texttt{struct semaphore} están definidos en \texttt{$<$asm/semaphore.h$>$} y un controlador sólo debe acceder a su estructura utilizando las primitivas provistas. Los semáforos deben inicializarse antes de su uso pasando un valor numérico a \textit{sema\_init}.
+
+\begin{funcdesc}{sema\_init}
+\funcion{void sema\_init(struct semaphore *sem, int val)}
+\cabecera{asm/semaphore.h}
+\sinopsis{Inicializa un semáforo.}
+\descrip{Inicializa el semáforo \textit{sem} con el valor \textit{val}. }
+\returnNada
+\end{funcdesc}
+
+Si bien la primitiva \textit{DOWN} está implementada con varios comportamientos, nosotros sólo veremos la función \textit{down\_interruptible} que permite al proceso ser interrumpido mientras lleva a cabo la operación. Si se interrumpe, el proceso no habrá adquirido el semáforo y entonces no será necesario ejecutar \textit{UP}.
+
+\begin{funcdesc}{P}
+\funcion{int down\_interruptible(struct semaphore *sem)}
+\cabecera{asm/semaphore.h}
+\sinopsis{Operación P interrumpible.}
+\descrip{Este método realiza la operación P sobre el semáforo \textit{sem} y permite que éste reciba señales en el transcurso de la llamada. }
+\return{0.}{-EINTR (llamada interrumpida).}
+\end{funcdesc}
+
+Su uso está dado de la siguiente manera:
+
+\begin{verbatim}
+        if (down_interruptible(&s)) {
+                /* La llamada fue interrumpida */
+                return -ERESTARTSYS;
+        }
+\end{verbatim} 
+
+La operación \textit{UP} está implementada con un nombre realmente muy sugestivo: \textit{up} y su comportamiento es el tradicional.
+\begin{funcdesc}{V}
+\funcion{void up(struct semaphore *sem)}
+\cabecera{asm/semaphore.h}
+\sinopsis{Operación V.}
+\descrip{Este método realiza la operación V sobre el semáforo \textit{sem}. }
+\returnNada
+\end{funcdesc}
+
+\section{Entrada y salida síncrona}
+
+Un problema que puede surgir durante una lectura del dispositivo es que no haya datos en ese momento pero no hayamos llegado al fin del archivo. Es decir, se puede asegurar que llegarán datos.
+
+La solución a esto es ``dormir esperando datos''. Esta sección muestra cómo dormir a un proceso, cómo despertarlo durante una lectura y después aplicamos esos conceptos a la escritura.
+
+\subsection{Cómo dormir procesos}
+Cuando un proceso deba esperar que ocurra un evento, lo correcto será ponerlo a dormir, suspendiendo así su ejecución y liberando al procesador para otros usos. En algún momento posterior, cuando el evento ocurra, el núcleo despertará al proceso y podrá continuar su tarea.
+
+En Linux, hay varias formas de manejar la suspensión de procesos, cada una de ellas para un caso particular. Sin embargo, todas utilizan el mismo tipo de datos: una cola de espera (\textit{wait\_queue\_head\_t}). Las colas de espera son declaradas e inicializadas de la siguiente manera:
+
+\begin{verbatim}
+        wait_queue_head_t cola;
+        init_waitqueue_head(&cola);
+\end{verbatim} 
+
+Cuando la cola de espera es declarada estáticamente (o sea, no es automática o dinámicamente alojada), también es posible declarar la cola e inicializarla en tiempo de compilación:
+
+\begin{verbatim}
+        DECLARE_WAIT_QUEUE_HEAD(cola);
+\end{verbatim} 
+
+La suspensión de procesos se consigue invocando alguna de estas variantes de \textit{sleep\_on}:
+
+\begin{funcdesc}{sleep\_on}
+\funcion{sleep\_on(wait\_queue\_head\_t *queue)}
+\cabecera{linux/wait.h}
+\descrip{Pone a dormir el proceso
+en forma ininterrumpible. Por lo tanto, el proceso no podrá recibir señales y
+puede quedar bloqueado si el evento que espera nunca ocurre. El argumento
+\textit{queue} es una referencia a la cola donde dormirá el proceso.}
+\end{funcdesc}
+
+\begin{funcdesc}{interruptible\_sleep\_on}
+\funcion{interruptible\_sleep\_on(wait\_queue\_head\_t *queue)}
+\cabecera{linux/wait.h}
+\descrip{Pone a dormir el proceso y permite que reciba señales. El argumento
+\textit{queue} es una referencia a la cola donde dormirá el proceso.}
+\end{funcdesc}
+
+%\clearpage
+
+Si bien estas primitivas son suficientes para conseguir el bloqueo de procesos, la forma más deseable de suspender un proceso es haciendo que espere por el cumplimiento de una condición booleana. Para esto existen un par de macros que se expanden a un ciclo while y por lo tanto aceptan cualquier expresión booleana de C válida.
+
+\begin{funcdesc}{wait\_event}
+\funcion{wait\_event(wait\_queue\_head\_t queue, boolean condicion)}
+\cabecera{linux/wait.h}
+\descrip{El argumento \textit{queue} es la cola donde dormirá el proceso hasta
+que se cumpla \textit{condicion}.}
+\end{funcdesc}
+
+\begin{funcdesc}{wait\_event\_interruptible}
+\funcion{int wait\_event\_interruptible(wait\_queue\_head\_t queue, boolean
+condicion)}
+\cabecera{linux/wait.h}
+\descrip{El argumento \textit{queue} es la cola donde dormirá el proceso hasta
+que se cumpla \textit{condicion}.}
+\return{0.}{-ERESTARTSYS si el proceso es interrumpido por una señal.}
+\end{funcdesc}
+
+%\clearpage
+\subsection{Cómo despertar procesos}
+
+Por último, veamos cómo se despierta a los procesos que están durmiendo en una cola de espera. 
+
+\begin{funcdesc}{wake\_up}
+\funcion{wake\_up(wait\_queue\_head\_t *queue)}
+\cabecera{linux/wait.h}
+\descrip{Despierta a todos los procesos que duermen en la cola \textit{queue}.
+Causa una inmediata replanificación del CPU y por lo tanto un nuevo proceso
+puede ejecutarse antes de que retorne.}
+\end{funcdesc}
+
+\begin{funcdesc}{wake\_up\_interruptible}
+\funcion{wake\_up\_interruptible(wait\_queue\_head\_t *queue)}
+\cabecera{linux/wait.h}
+\descrip{Despierta a todos los procesos que duermen en la cola \textit{queue}
+y que están en estado interrumpible. Si un proceso espera por una condición en
+un ciclo, no será despertado. Causa una inmediata replanificación del CPU y por
+lo tanto un nuevo proceso puede ejecutarse antes de que retorne.}
+\end{funcdesc}
+
+\begin{funcdesc}{wake\_up\_interruptible\_sync}
+\funcion{wake\_up\_interruptible\_sync(wait\_queue\_head\_t *queue)}
+\cabecera{linux/wait.h}
+\descrip{Despierta a todos los procesos que duermen en la cola \textit{queue}
+y que están en estado interrumpible. Si un proceso espera por una condición en
+un ciclo, no será despertado. Modifica el estado de los procesos suspendidos,
+pero no replanifica el CPU.}
+\end{funcdesc}
+
+\begin{thebibliography}{99}
+
+\bibitem{KerHT} Kwan Lowe, ``\textit{Kernel Rebuild Guide}'', 2004.
+
+\bibitem{LDD} Jonathan Corbet, Alessandro Rubini y Greg Kroah-Hartman, ``\textit{Linux Device Drivers}'', 3rd Edition, O'Rielly, 2005.
+
+\end{thebibliography}
+
+\end{document}
